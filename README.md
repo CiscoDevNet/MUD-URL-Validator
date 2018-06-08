@@ -10,13 +10,13 @@
 MUD URL Validator
 -----------------
 
-The MUD URL Validator is a python script that finds each Ethernet frames in a 
-PCAP file that contain a MUD URL. It then validates that the MUD URL is
+The MUD URL Validator is a python script that finds each Ethernet frame in a 
+PCAP file that contains a MUD URL. It then validates that the MUD URL is
 properly formed according to the MUD specification
 (https://tools.ietf.org/html/draft-ietf-opsawg-mud).
 
-The Validator will look for a MUD URL in an LLDP message, a DHCP Discover, and
-a DHCP Request message.
+The Validator will look for a MUD URL in an LLDP message, 
+a DHCP Discover message, and a DHCP Request message.
 
 #### Requirements:
 * version >= Python 2.6
@@ -33,40 +33,41 @@ or
 
 	sudo python setup.py install
 
-You will be invoking the validate_mud_url.py script, which can be copied to any
+You will also be using the validate_mud_url.py script, which can be copied to any
 directory that you like.
 
 ### Usage
 
 1. Capturing Packets
 
-You will need to create a PCAP file using Wireshark, tcpdump, or another tool.
-To do that you'll need to ensure that the capture device has access to the
+You will need to create a PCAP file, for example using using Wireshark or
+tcpdump.  Care must be taken that the capture device has access to the
 packets being generated. 
 
-To capture DHCP packets, the capture device needs to be on the path between
-the device emitting the DHCP packets and the DHCP server. DHCP packets are 
-IP packets. It may work to connect the capture device to another port on the 
-switch to which the device is attached.
+To capture DHCP packets, the capture device needs to be on the routed path 
+between the device emitting the DHCP packets and the DHCP server. 
+DHCP packets are IP packets. It may work to connect the capture device 
+to another port on the switch to which the device is attached.
 
 Capturing LLDP packets takes a little more care because they are emitted 
-on Ethernet group addresses that are consumed by the Ethernet switch. As such
+on Ethernet group addresses that are consumed by the Ethernet switch. As such,
 they are only available on the port between the device emitting the LLDP 
 packets and the switch port to which it is connected. So if you are 
 validating a MUD URL in an LLDP packet, you'll need to install an Ethernet 
-hub, or configure a "SPAN" port on the switch being sent properly in 
-LLDP packets.
+hub on that port, or configure a "SPAN" port on the switch 
+being sent properly in LLDP packets. But if the device is drawing power 
+from the switch (using PoE), then you'll need to use the "SPAN" port approach.
 
 To create a SPAN port on a Cisco Catalyst switch, configure a 
 "monitor session". For example, if you are inspecting packets from a device
 connected to GigabitEthernet1/0/4, and capturing them on
-GigabitEthernet1/0/14, you could configure the following in the configuration:
+GigabitEthernet1/0/14, you would configure the following in the configuration:
 
 	monitor session 1 source interface Gi1/0/4
 	monitor session 1 destination interface Gi1/0/14
 
 Save the resulting file in a PCAP format (i.e., with a '.pcap' file
-extension).
+extension). If you using WireShark this is not its default format.
 
 2. Discover and validate MUD URLs in the PCAP file.
 
