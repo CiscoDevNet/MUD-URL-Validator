@@ -25,13 +25,22 @@ a DHCP Discover message, and a DHCP Request message.
 
 #### Installation:
 
+Install dependancies
+
+	pip install validators
+
+(Note: Depending on your system, you may need to run pip as root. In that 
+case prepend each command with "sudo".)
+	
+
 Install dpkt from this repository, which supports LLDP.
 
-	sudo pip install -e .
+	pip install -e ./dpkt
 
 or 
 
-	sudo python setup.py install
+	cd dpkt
+	python setup.py install
 
 You will also be using the validate_mud_url.py script, which can be copied to any
 directory that you like.
