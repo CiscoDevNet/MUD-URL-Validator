@@ -19,7 +19,7 @@ The Validator will look for a MUD URL in an LLDP message,
 a DHCP Discover message, and a DHCP Request message.
 
 #### Requirements:
-* version >= Python 2.6
+* version >= Python 2.6 or Python3
 * dpkt (from this repository)
 * validators
 

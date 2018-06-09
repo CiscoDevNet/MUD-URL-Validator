@@ -6,6 +6,8 @@ FUTURE: If a MUD URL is not found, check the other TLVs or options or TLVs
         to see if there is a malformed MUD URL in recognizable way.
 """
 
+from __future__ import print_function
+
 import dpkt
 import datetime
 import socket
@@ -47,12 +49,11 @@ def log_eth_packet(timestamp, eth):
            eth: The ethernet header
     """
     # Print out the timestamp in UTC
-    print
-    print
-    print 'Timestamp: %s' % str(datetime.datetime.utcfromtimestamp(timestamp))
+    print('\n\nTimestamp: {0}'\
+                .format(str(datetime.datetime.utcfromtimestamp(timestamp))))
 
     # Unpack the Ethernet frame (mac src/dst, ethertype)
-    print 'Ethernet Frame: ', mac_addr(eth.src), mac_addr(eth.dst), eth.type
+    print('Ethernet Frame: ', mac_addr(eth.src), mac_addr(eth.dst), eth.type)
 
 
 def log_dhcp_packet(timestamp, eth, msg_type):
@@ -68,13 +69,13 @@ def log_dhcp_packet(timestamp, eth, msg_type):
     # Print some IP & UDP data
     ip = eth.data
     udp = ip.data
-    print '    IP: %s -> %s   (len=%d ttl=%d prot=%d)' % \
-          (inet_to_str(ip.src), inet_to_str(ip.dst), ip.len, ip.ttl, ip.p)
-    print '    UDP: (sport=%d dport=%d ulen=%d sum=%d)' % \
-            (udp.sport, udp.dport, udp.ulen, udp.sum)
+    print('    IP: %s -> %s   (len=%d ttl=%d prot=%d)' % \
+          (inet_to_str(ip.src), inet_to_str(ip.dst), ip.len, ip.ttl, ip.p))
+    print('    UDP: (sport=%d dport=%d ulen=%d sum=%d)' % \
+            (udp.sport, udp.dport, udp.ulen, udp.sum))
 
     # Print the DHCP message type
-    print '    DHCP: Message Type:', msg_type
+    print('    DHCP: Message Type:', msg_type)
 
 
 def validate_mud_url(url, source):
@@ -94,27 +95,30 @@ def validate_mud_url(url, source):
     """
     errs = 0
 
-    print '    MUD Option found in %s: %s' % (source,  url)
+    print('    MUD Option found in {0}: {1}'.format(source, url))
+    #print(url.encode('ascii'))
 
     if not url.startswith ('https://'):
-        print'        ERROR: MUD URL does not begin with https://'
+        print('        ERROR: MUD URL does not begin with https://')
         errs = errs + 1
 
     if url.endswith ('.json'):
-        print'        ERROR: MUD URL hould not end with .json. The MUD manager'
-        print'               will add .json to the URL when it needs it.'
+        print('        ERROR: MUD URL should not end with .json.')
+        print('               The MUD manager will add .json to the URL when')
+        print('               it needs it.')
         errs = errs + 1
 
     if not validators.url(url):
-        print'        ERROR: Not a well formed URL.'
-        print'               Ensure the MUD URL matches the format of:'
-        print'                   https://something.com/string/string/string.json'
-        print'               where "something.com" should be a domain name and each'
-        print'               "string" contains only legal characters for a URL'
+        print('        ERROR: Not a well formed URL.')
+        print('               Ensure the MUD URL matches the format of:')
+        print('                   https://something.com/string/string/string.json')
+        print('               where "something.com" should be a domain name')
+        print('               and each "string" contains only legal characters')
+        print('               for a URL')
         errs = errs + 1
 
     if (not errs):
-        print'        OK!'
+        print('        OK!')
 
 def find_mud_url(pcap):
     """Look for a MUD URLs in frames discovered in a pcap. If a MUD URL
@@ -124,6 +128,8 @@ def find_mud_url(pcap):
            pcap: dpkt pcap reader object (dpkt.pcap.Reader)
     """
     found_url = 0 
+                    
+    mud_ouit = str.join('',('%c'% i for i in (0x00, 0x00, 0x5e, 0x01)))
     
     for timestamp, buf in pcap:
 
@@ -135,8 +141,10 @@ def find_mud_url(pcap):
                 tlv_type = tlv.typelen >> 9
                 tlv_len = tlv.typelen & 0x01ff
                 if tlv_type == 127:
-                    if tlv.data[:4] == '\x00\x00\x5e\x01':
-                        mud_url = tlv.data[4:]
+                    oui_type = str.join('',('%c'% i for i in tlv.data[:4]))
+                    if oui_type == mud_ouit:
+                        mud_url = str.join('',('%c'% i for i in (tlv.data[4:])))
+                        found_url = 1
                         log_eth_packet(timestamp, eth)
                         validate_mud_url(mud_url, 'LLDP')
             continue
@@ -157,16 +165,17 @@ def find_mud_url(pcap):
             dhcp = dpkt.dhcp.DHCP(udp.data)
             for opt in dhcp.opts:
                 if opt[0] == 53:
-                    if opt[1] == '\x01':
+                    if opt[1] == b'\x01':
                         msg_type = 'DHCP Discover'
-                    elif opt[1] == '\x03':
+                    elif opt[1] == b'\x03':
                         msg_type = 'DHCP Request'
                     else:
                         break;
                 elif opt[0] == 161:
                     found_url = 1
                     log_dhcp_packet(timestamp, eth, msg_type)
-                    validate_mud_url(opt[1], 'DHCP')
+                    mud_url = str.join('',('%c'% i for i in (opt[1][0:])))
+                    validate_mud_url(mud_url, 'DHCP')
             if msg_type == 'none':
                 continue
 
@@ -185,39 +194,36 @@ def validate_pcap_mud_url():
 
     # Validate that the filename ends in .pcap
     if not args.filename.endswith('.pcap'):
-        print "ERROR: Filename should end in .pcap"
+        print('ERROR: Filename should end in .pcap')
         return
 
     # Open up a test pcap file and check packets
     with open(args.filename, 'rb') as f:
         pcap = dpkt.pcap.Reader(f)
     
-        print
-        print 'ANALYZING', args.filename
+        print('\nANALYZING', args.filename)
 
         find_mud_url(pcap)
 
 
 def test():
-    print 'TESTING VALIDATION RULES'
+    print('TESTING VALIDATION RULES')
 
-    print '  SHOULD PASS VALIDATION'
+    print('  SHOULD PASS VALIDATION')
     # Examples from the MUD specification
     validate_mud_url('https://things.example.org/product_abc123/v5', 'TEST')
-    print
+    print('\n')
     validate_mud_url('https://www.example.net/mudfiles/temperature_sensor/',
                       'TEST')
-    print
+    print('\n')
     validate_mud_url('https://example.com/lightbulbs/colour/v1', 'TEST')
-    print
-
-    print '  SHOULD FAIL VALIDATION'
+    print('\n  SHOULD FAIL VALIDATION')
     validate_mud_url('https://www.foo.com/hello/there.json', 'TEST')
-    print
+    print('\n')
     validate_mud_url('http://www.foo.com/hello/there/', 'TEST')
-    print
+    print('\n')
     validate_mud_url('https://www.foo.com&hello*there.json', 'TEST')
-    print
+    print('\n')
     validate_mud_url('https://www.foo.com/<begin>/<mudfile>/<end>/.json', 'TEST')
 
 
