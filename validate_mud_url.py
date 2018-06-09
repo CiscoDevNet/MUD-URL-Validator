@@ -14,6 +14,7 @@ import socket
 import validators
 import argparse
 
+mud_ouit = str.join('',('%c'% i for i in (0x00, 0x00, 0x5e, 0x01)))
 
 def mac_addr(address):
     """Convert a MAC address to a readable/printable string
@@ -120,6 +121,41 @@ def validate_mud_url(url, source):
     if (not errs):
         print('        OK!')
 
+def check_lldp_frame(timestamp, eth):
+    lldp = eth.data
+    for tlv in lldp.tlvs:
+        tlv_type = tlv.typelen >> 9
+        tlv_len = tlv.typelen & 0x01ff
+        if tlv_type == 127:
+            oui_type = str.join('',('%c'% i for i in tlv.data[:4]))
+            if oui_type == mud_ouit:
+                mud_url = str.join('',('%c'% i for i in (tlv.data[4:])))
+                log_eth_packet(timestamp, eth)
+                validate_mud_url(mud_url, 'LLDP')
+                return True;
+
+    return False
+
+
+def check_dhcp_packet(timestamp, eth, udp):
+    dhcp = dpkt.dhcp.DHCP(udp.data)
+    for opt in dhcp.opts:
+        if opt[0] == 53:
+            if opt[1] == b'\x01':
+                msg_type = 'DHCP Discover'
+            elif opt[1] == b'\x03':
+                msg_type = 'DHCP Request'
+            else:
+                # We don't care about other DHCP message types
+                break;
+        elif opt[0] == 161:
+            log_dhcp_packet(timestamp, eth, msg_type)
+            mud_url = str.join('',('%c'% i for i in (opt[1][0:])))
+            validate_mud_url(mud_url, 'DHCP')
+            return True
+
+    return False
+
 def find_mud_url(pcap):
     """Look for a MUD URLs in frames discovered in a pcap. If a MUD URL
        is found, log it and validate the MUD URL.
@@ -129,58 +165,32 @@ def find_mud_url(pcap):
     """
     found_url = 0 
                     
-    mud_ouit = str.join('',('%c'% i for i in (0x00, 0x00, 0x5e, 0x01)))
-    
     for timestamp, buf in pcap:
 
         eth = dpkt.ethernet.Ethernet(buf)
 
         if isinstance(eth.data, dpkt.lldp.LLDP):
-            lldp = eth.data
-            for tlv in lldp.tlvs:
-                tlv_type = tlv.typelen >> 9
-                tlv_len = tlv.typelen & 0x01ff
-                if tlv_type == 127:
-                    oui_type = str.join('',('%c'% i for i in tlv.data[:4]))
-                    if oui_type == mud_ouit:
-                        mud_url = str.join('',('%c'% i for i in (tlv.data[4:])))
-                        found_url = 1
-                        log_eth_packet(timestamp, eth)
-                        validate_mud_url(mud_url, 'LLDP')
+            if check_lldp_frame(timestamp, eth):
+                found_url = found_url + 1
             continue
 
         #
-        # Look for IP/UDP#/DHCP packets
+        # Look for IP/UDP/DHCP packets
         #
         if not isinstance(eth.data, dpkt.ip.IP):
             continue
-        
         ip = eth.data
         if not isinstance(ip.data, dpkt.udp.UDP):
             continue
-      
-        msg_type = 'none'
         udp = ip.data
         if udp.sport == 68 and udp.dport == 67:
-            dhcp = dpkt.dhcp.DHCP(udp.data)
-            for opt in dhcp.opts:
-                if opt[0] == 53:
-                    if opt[1] == b'\x01':
-                        msg_type = 'DHCP Discover'
-                    elif opt[1] == b'\x03':
-                        msg_type = 'DHCP Request'
-                    else:
-                        break;
-                elif opt[0] == 161:
-                    found_url = 1
-                    log_dhcp_packet(timestamp, eth, msg_type)
-                    mud_url = str.join('',('%c'% i for i in (opt[1][0:])))
-                    validate_mud_url(mud_url, 'DHCP')
-            if msg_type == 'none':
-                continue
+            if check_dhcp_packet(timestamp, eth, udp):
+                found_url = found_url + 1
 
     if found_url == 0:
-        print('No MUD URL found in the pcap file.')
+        print('\nNo records in the pcap file seem to contain a MUD URL.')
+    else:
+        print('\nFound {0} MUD URLs in the pcap file.'.format(found_url))
 
 
 def validate_pcap_mud_url():
