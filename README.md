@@ -21,7 +21,12 @@ a DHCP Discover message, and a DHCP Request message.
 #### Requirements:
 * version >= Python 2.6 or Python3
 * dpkt (from this repository)
+* datetime
+* socket
 * validators
+* argparse
+* urllib
+* os
 
 #### Installation:
 

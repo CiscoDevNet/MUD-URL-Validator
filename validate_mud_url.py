@@ -13,8 +13,16 @@ import datetime
 import socket
 import validators
 import argparse
+import urllib
+import os
 
-mud_ouit = str.join('',('%c'% i for i in (0x00, 0x00, 0x5e, 0x01)))
+iana_oui = str.join('',('%c'% i for i in (0x00, 0x00, 0x5e)))
+tr41_oui = str.join('',('%c'% i for i in (0x00, 0x12, 0xbb)))
+ieee8023_oui = str.join('',('%c'% i for i in (0x00, 0x12, 0x0f)))
+cisco_oui = str.join('',('%c'% i for i in (0x00, 0x01, 0x42)))
+
+oui_file = None
+oui_file = None
 
 def mac_addr(address):
     """Convert a MAC address to a readable/printable string
@@ -109,6 +117,11 @@ def validate_mud_url(url, source):
         print('               it needs it.')
         errs = errs + 1
 
+    if url.find ('.well_known') > 0:
+        print('        WARNING: A MUD URI should not have a ".well_known"')
+        print('                component. This was present only in early ')
+        print('                drafts of the MUD specification.')
+
     if not validators.url(url):
         print('        ERROR: Not a well formed URL.')
         print('               Ensure the MUD URL matches the format of:')
@@ -121,18 +134,67 @@ def validate_mud_url(url, source):
     if (not errs):
         print('        OK!')
 
+def is_iana_oui(timestamp, eth, tlv):
+    # As globals, oui_file and oui_file are treated as "static" variables.
+    global oui_file
+    global oui_file
+
+    oui = str.join('',('%c'% i for i in tlv.data[:3]))
+
+    # Check for IANA first, if so we're done.
+    if oui == iana_oui: 
+        return True;
+
+    # Check the IEEE 802 OUI file. If not there, issue a warning.
+    if oui_file == None:
+        # Use a local copy, if available in the current directory.
+        # Otherwise attempt to fetch it from the IEEE 802 server.
+        oui_file = './oui.txt'
+        if os.path.exists(oui_file):
+            with open('./oui.txt', 'rb') as g:
+                oui_file = g.read()
+        else:
+            oui_file = "http://standards-oui.ieee.org/oui.txt"
+            print('\nFetching ', oui_file);
+            f = urllib.urlopen(oui_file)
+            oui_file = f.read()
+            # close it?
+    
+    oui_str ='-'.join('%02X' % dpkt.compat.compat_ord(b) for b in oui)
+    if oui_file.find(oui_str) < 0:
+        log_eth_packet(timestamp, eth)
+        print('WARNING: OUI {0} not found in IEEE 802 OUI file.'\
+                    .format(oui_str))
+        print('        ', oui_link)
+        print('         Are you sure it is correct?')
+
+    return False
+
+
 def check_lldp_frame(timestamp, eth):
     lldp = eth.data
+    exp_subtype = 1
     for tlv in lldp.tlvs:
         tlv_type = tlv.typelen >> 9
         tlv_len = tlv.typelen & 0x01ff
         if tlv_type == 127:
-            oui_type = str.join('',('%c'% i for i in tlv.data[:4]))
-            if oui_type == mud_ouit:
-                mud_url = str.join('',('%c'% i for i in (tlv.data[4:])))
-                log_eth_packet(timestamp, eth)
-                validate_mud_url(mud_url, 'LLDP')
-                return True;
+            # Found an Organization Specific TLV
+            if is_iana_oui(timestamp, eth, tlv) == True:
+                # Found an IANA OUI, but is the subtype correct (0x01)?
+                subtype=ord(tlv.data[3])
+                if subtype == exp_subtype:
+                    mud_url = str.join('',('%c'% i for i in (tlv.data[4:])))
+                    log_eth_packet(timestamp, eth)
+                    validate_mud_url(mud_url, 'LLDP')
+                    return True;
+                else:
+                    log_eth_packet(timestamp, eth)
+                    print('WARNING: LLDP frame with an IANA OUI found, but')
+                    print('         with a Subtype not a MUD URI.')
+                    print('             Subcode={0}'.format(hex(subtype)))
+                    print('         If this is meant to be a MUD URI TLV, it')
+                    print('         should be:')
+                    print('             Subcode={0}'.format(hex(exp_subtype)));
 
     return False
 
@@ -219,7 +281,7 @@ def validate_pcap_mud_url():
 def test():
     print('TESTING VALIDATION RULES')
 
-    print('  SHOULD PASS VALIDATION')
+    print('  SHOULD PASS VALIDATION WITHOUT WARNINGS')
     # Examples from the MUD specification
     validate_mud_url('https://things.example.org/product_abc123/v5', 'TEST')
     print('\n')
@@ -227,6 +289,8 @@ def test():
                       'TEST')
     print('\n')
     validate_mud_url('https://example.com/lightbulbs/colour/v1', 'TEST')
+    print('\n  SHOULD PASS VALIDATION WITH WARNINGS')
+    validate_mud_url('https://example.com/.well_known/v1/lightbulbs/colour/v1', 'TEST')
     print('\n  SHOULD FAIL VALIDATION')
     validate_mud_url('https://www.foo.com/hello/there.json', 'TEST')
     print('\n')
