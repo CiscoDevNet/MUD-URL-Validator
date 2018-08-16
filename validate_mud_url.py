@@ -4,6 +4,8 @@
 Use this script to find MUD URLs in LLDP and DHCP packets found in a pcap file.
 FUTURE: If a MUD URL is not found, check the other TLVs or options or TLVs 
         to see if there is a malformed MUD URL in recognizable way.
+
+Copyright (c) 2018 Cisco and/or its affiliates.
 """
 
 from __future__ import print_function
