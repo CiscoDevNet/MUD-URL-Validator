@@ -30,12 +30,14 @@ a DHCP Discover message, and a DHCP Request message.
 
 #### Installation:
 
-Install dependancies
+Install dependancies.
 
 	pip install validators
 
-(Note: Depending on your system, you may need to run pip as root. In that 
-case prepend each command with "sudo".)
+NOTE 1: Depending on your system, you may need to run pip as root. In that 
+case prepend each command with "sudo".
+
+NOTE 2: If you are using Python3, use "pip3" instead of "pip" when installing Python packages.
 	
 
 Install dpkt from this repository, which supports LLDP.
