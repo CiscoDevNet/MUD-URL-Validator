@@ -23,7 +23,7 @@ tr41_oui = str.join('',('%c'% i for i in (0x00, 0x12, 0xbb)))
 ieee8023_oui = str.join('',('%c'% i for i in (0x00, 0x12, 0x0f)))
 cisco_oui = str.join('',('%c'% i for i in (0x00, 0x01, 0x42)))
 
-oui_file = None
+cached_oui_file = './oui.txt'
 oui_file = None
 
 def mac_addr(address):
@@ -139,7 +139,6 @@ def validate_mud_url(url, source):
 def is_iana_oui(timestamp, eth, tlv):
     # As globals, oui_file and oui_file are treated as "static" variables.
     global oui_file
-    global oui_file
 
     oui = str.join('',('%c'% i for i in tlv.data[:3]))
 
@@ -151,16 +150,22 @@ def is_iana_oui(timestamp, eth, tlv):
     if oui_file == None:
         # Use a local copy, if available in the current directory.
         # Otherwise attempt to fetch it from the IEEE 802 server.
-        oui_file = './oui.txt'
+        # TODO: Check the file time, and if it's too old fetch it anyway
+        #       and cache the new copy.
+        oui_file = cached_oui_file
         if os.path.exists(oui_file):
-            with open('./oui.txt', 'rb') as g:
+            print('\nUsing ', oui_file);
+            with open(oui_file, 'rb') as g:
                 oui_file = g.read()
         else:
             oui_file = "http://standards-oui.ieee.org/oui.txt"
             print('\nFetching ', oui_file);
             f = urllib.urlopen(oui_file)
             oui_file = f.read()
-            # close it?
+            # Cache it.
+            with open(cached_oui_file, 'w') as h:
+                h.write(oui_file)
+                h.close()
     
     oui_str ='-'.join('%02X' % dpkt.compat.compat_ord(b) for b in oui)
     if oui_file.find(oui_str) < 0:
