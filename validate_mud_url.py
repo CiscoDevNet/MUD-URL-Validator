@@ -26,6 +26,8 @@ cisco_oui = str.join('',('%c'% i for i in (0x00, 0x01, 0x42)))
 cached_oui_file = './oui.txt'
 oui_file = None
 
+check_oui = True
+
 def mac_addr(address):
     """Convert a MAC address to a readable/printable string
 
@@ -137,14 +139,18 @@ def validate_mud_url(url, source):
         print('        OK!')
 
 def is_iana_oui(timestamp, eth, tlv):
-    # As globals, oui_file and oui_file are treated as "static" variables.
+    # As globals, oui_file are treated as "static" variables.
     global oui_file
+    global check_oui
 
     oui = str.join('',('%c'% i for i in tlv.data[:3]))
 
     # Check for IANA first, if so we're done.
     if oui == iana_oui: 
         return True;
+
+    if check_oui == False:
+        return False;
 
     # Check the IEEE 802 OUI file. If not there, issue a warning.
     if oui_file == None:
@@ -154,7 +160,6 @@ def is_iana_oui(timestamp, eth, tlv):
         #       and cache the new copy.
         oui_file = cached_oui_file
         if os.path.exists(oui_file):
-            print('\nUsing ', oui_file);
             with open(oui_file, 'rb') as g:
                 oui_file = g.read()
         else:
@@ -167,12 +172,12 @@ def is_iana_oui(timestamp, eth, tlv):
                 h.write(oui_file)
                 h.close()
     
-    oui_str ='-'.join('%02X' % dpkt.compat.compat_ord(b) for b in oui)
-    if oui_file.find(oui_str) < 0:
+    oui_str ='-'.join('%02X' % dpkt.compat.compat_ord(b) for b in tlv.data[:3])
+    oui_bytes = bytearray(oui_str, encoding='utf-8')
+    if oui_file.find(oui_bytes) < 0:
         log_eth_packet(timestamp, eth)
         print('WARNING: OUI {0} not found in IEEE 802 OUI file.'\
                     .format(oui_str))
-        print('        ', oui_link)
         print('         Are you sure it is correct?')
 
     return False
@@ -188,7 +193,7 @@ def check_lldp_frame(timestamp, eth):
             # Found an Organization Specific TLV
             if is_iana_oui(timestamp, eth, tlv) == True:
                 # Found an IANA OUI, but is the subtype correct (0x01)?
-                subtype=ord(tlv.data[3])
+                subtype=ord(str.join('', ('%c' %tlv.data[3])))
                 if subtype == exp_subtype:
                     mud_url = str.join('',('%c'% i for i in (tlv.data[4:])))
                     log_eth_packet(timestamp, eth)
@@ -263,11 +268,14 @@ def find_mud_url(pcap):
 
 
 def validate_pcap_mud_url():
+    global check_oui
+
     # Setup command arguments. The filename is a required argument.
     parser = argparse.ArgumentParser(prog='validate_mud_url', description=
                 'Find MUD URLs in a PCAP file.')
     parser.add_argument('-v', '--version', action='version', 
                         version='%(prog)s 1.0')
+    parser.add_argument('-s', '--skipoui', action='store_true')
     parser.add_argument("filename", help='PCAP file to check for MUD URLs')
     args = parser.parse_args()
 
@@ -275,6 +283,8 @@ def validate_pcap_mud_url():
     if not args.filename.endswith('.pcap'):
         print('ERROR: Filename should end in .pcap')
         return
+
+    check_oui = not args.skipoui 
 
     # Open up a test pcap file and check packets
     with open(args.filename, 'rb') as f:
