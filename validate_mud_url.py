@@ -17,18 +17,14 @@ import validators
 import argparse
 import os
 import sys
+import wget
 
-if sys.version_info >= (3,0):
-    import urllib.request
-else:
-    import urllib
 
 iana_oui = str.join('',('%c'% i for i in (0x00, 0x00, 0x5e)))
 tr41_oui = str.join('',('%c'% i for i in (0x00, 0x12, 0xbb)))
 ieee8023_oui = str.join('',('%c'% i for i in (0x00, 0x12, 0x0f)))
 cisco_oui = str.join('',('%c'% i for i in (0x00, 0x01, 0x42)))
 
-cached_oui_file = './oui.txt'
 oui_file = None
 
 check_oui = True
@@ -163,6 +159,7 @@ def is_iana_oui(timestamp, eth, tlv):
         # Otherwise attempt to fetch it from the IEEE 802 server.
         # TODO: Check the file time, and if it's too old fetch it anyway
         #       and cache the new copy.
+        cached_oui_file = './oui.txt'
         oui_file = cached_oui_file
         if os.path.exists(oui_file):
             with open(oui_file, 'rb') as g:
@@ -170,19 +167,13 @@ def is_iana_oui(timestamp, eth, tlv):
         else:
             oui_file = "http://standards-oui.ieee.org/oui.txt"
             print('\nFetching ', oui_file);
-            if sys.version_info >= (3,0):
-                f = urllib.request.urlopen(oui_file)
-            else:
-                f = urllib.urlopen(oui_file)
+            cached_oui_file = wget.download(oui_file)
+            
+        with open(cached_oui_file, 'r') as f:
             oui_file = f.read()
-            # Cache it.
-            with open(cached_oui_file, 'w') as h:
-                h.write(str(oui_file))
-                h.close()
-    
+
     oui_str ='-'.join('%02X' % dpkt.compat.compat_ord(b) for b in tlv.data[:3])
-    oui_bytes = bytearray(oui_str, encoding='utf-8')
-    if oui_file.find(oui_bytes) < 0:
+    if oui_file.find(oui_str) < 0:
         log_eth_packet(timestamp, eth)
         print('WARNING: OUI {0} not found in IEEE 802 OUI file.'\
                     .format(oui_str))

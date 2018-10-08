@@ -25,7 +25,7 @@ a DHCP Discover message, and a DHCP Request message.
 * socket
 * validators
 * argparse
-* urllib
+* wget
 * os
 
 #### Installation:
@@ -33,6 +33,7 @@ a DHCP Discover message, and a DHCP Request message.
 Install dependancies.
 
 	pip install validators
+	pip install wget
 
 NOTE 1: Depending on your system, you may need to run pip as root. In that 
 case prepend each command with "sudo".
