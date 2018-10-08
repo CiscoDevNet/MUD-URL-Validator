@@ -15,8 +15,13 @@ import datetime
 import socket
 import validators
 import argparse
-import urllib
 import os
+import sys
+
+if sys.version_info >= (3,0):
+    import urllib.request
+else:
+    import urllib
 
 iana_oui = str.join('',('%c'% i for i in (0x00, 0x00, 0x5e)))
 tr41_oui = str.join('',('%c'% i for i in (0x00, 0x12, 0xbb)))
@@ -165,11 +170,14 @@ def is_iana_oui(timestamp, eth, tlv):
         else:
             oui_file = "http://standards-oui.ieee.org/oui.txt"
             print('\nFetching ', oui_file);
-            f = urllib.urlopen(oui_file)
+            if sys.version_info >= (3,0):
+                f = urllib.request.urlopen(oui_file)
+            else:
+                f = urllib.urlopen(oui_file)
             oui_file = f.read()
             # Cache it.
             with open(cached_oui_file, 'w') as h:
-                h.write(oui_file)
+                h.write(str(oui_file))
                 h.close()
     
     oui_str ='-'.join('%02X' % dpkt.compat.compat_ord(b) for b in tlv.data[:3])
