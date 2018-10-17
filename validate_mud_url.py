@@ -19,7 +19,6 @@ import sys
 import wget
 import dpkt.radius
 from dpkt.radius import *
-from dpkt.dhcp import *
 import dpkt
 
 iana_oui = str.join('',('%c'% i for i in (0x00, 0x00, 0x5e)))
@@ -215,9 +214,12 @@ def check_dhcp_packet(timestamp, eth, udp):
     dhcp = dpkt.dhcp.DHCP(udp.data)
     for opt in dhcp.opts:
         if opt[0] == 53:
-            if opt[1] == chr(DHCPDISCOVER):
+            # It would be nice to use the DHCP message type values in
+            # the DHCP module, but there doesn't appear to be a convenient
+            # way to get the comparison to work for both Python2 and Python3.
+            if opt[1] == b'\x01':
                 msg_type = 'DHCP Discover'
-            elif opt[1] == chr(DHCPREQUEST):
+            elif opt[1] == b'\x03':
                 msg_type = 'DHCP Request'
             else:
                 # We don't care about other DHCP message types
