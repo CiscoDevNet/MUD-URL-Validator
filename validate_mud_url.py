@@ -10,7 +10,6 @@ Copyright (c) 2018 Cisco and/or its affiliates.
 
 from __future__ import print_function
 
-import dpkt
 import datetime
 import socket
 import validators
@@ -18,7 +17,10 @@ import argparse
 import os
 import sys
 import wget
-
+import dpkt.radius
+from dpkt.radius import *
+from dpkt.dhcp import *
+import dpkt
 
 iana_oui = str.join('',('%c'% i for i in (0x00, 0x00, 0x5e)))
 tr41_oui = str.join('',('%c'% i for i in (0x00, 0x12, 0xbb)))
@@ -70,7 +72,7 @@ def log_eth_packet(timestamp, eth):
     print('Ethernet Frame: ', mac_addr(eth.src), mac_addr(eth.dst), eth.type)
 
 
-def log_dhcp_packet(timestamp, eth, msg_type):
+def log_udp_packet(timestamp, eth, prot_type, msg_type):
     """Print a record of an intersting DHCP packet
 
        Args:
@@ -88,8 +90,7 @@ def log_dhcp_packet(timestamp, eth, msg_type):
     print('    UDP: (sport=%d dport=%d ulen=%d sum=%d)' % \
             (udp.sport, udp.dport, udp.ulen, udp.sum))
 
-    # Print the DHCP message type
-    print('    DHCP: Message Type:', msg_type)
+    print('    ', prot_type, ': Message Type:', msg_type)
 
 
 def validate_mud_url(url, source):
@@ -214,18 +215,73 @@ def check_dhcp_packet(timestamp, eth, udp):
     dhcp = dpkt.dhcp.DHCP(udp.data)
     for opt in dhcp.opts:
         if opt[0] == 53:
-            if opt[1] == b'\x01':
+            if opt[1] == chr(DHCPDISCOVER):
                 msg_type = 'DHCP Discover'
-            elif opt[1] == b'\x03':
+            elif opt[1] == chr(DHCPREQUEST):
                 msg_type = 'DHCP Request'
             else:
                 # We don't care about other DHCP message types
                 break;
         elif opt[0] == 161:
-            log_dhcp_packet(timestamp, eth, msg_type)
+            log_udp_packet(timestamp, eth, 'DHCP', msg_type)
             mud_url = str.join('',('%c'% i for i in (opt[1][0:])))
             validate_mud_url(mud_url, 'DHCP')
             return True
+
+    return False
+
+def check_radius_packet(timestamp, eth, udp):
+    radius = dpkt.radius.RADIUS(udp.data)
+
+    if radius.code == RADIUS_ACCESS_REQUEST:
+        msg_type = 'Access'
+    elif radius.code == RADIUS_ACCT_REQUEST:
+        msg_type = 'Accounting'
+    else:
+        print('Unexpected {0} message'.format(hex(radius.code)))
+        return;
+
+    for attr in radius.attrs:
+        # attr[0] has the type, attr[1] has the attribute data
+        if attr[0] == 26:
+            # For a Vendor-Specific attribute, the data begins after the
+            # Vendor id (e.g., 0x00000009 for Cisco)
+            tlv_data = attr[1][4:]
+            # Validate that there is a 0x01 and we don't care about the next
+            # octet (length).
+            if tlv_data[0] == b'\x01':
+                data = tlv_data[2:]
+                if str.join('',('%c'% i for i in (data[0:9]))) == "lldp-tlv=":
+                    #
+                    # Found an LLDP TLV. See if it contains a MUD URL.
+                    #   Two octets LLDP type (0x007f), followed by two octets
+                    #   of length (which we ignore). Then look for the OUI
+                    #   (0x00005e) and a subtype of 0x01.
+                    if data[9] == b'\x00' and data[10] == b'\x7f':
+                        if data[13] == b'\x00' and data[14] == b'\x00' and \
+                           data[15] == b'\x5e' and data[16] == b'\x01':
+                            mud_url = data[17:]
+                            log_udp_packet(timestamp, eth, 'RADIUS/LLDP TLV', 
+                                           msg_type)
+                            validate_mud_url(mud_url, 'Radius')
+                            return True
+                elif str.join('',('%c'% i for i in (data[0:12]))) == \
+                     "dhcp-option=":
+                    #
+                    # Found a DHCP Option. See if it contain a MUD URL.
+                    #   Two octets DHCP option number (0x00a1), followed by
+                    #   two octets of length (which we ignore). Then look for
+                    #   the MUD URL.
+                    #
+                    if data[12] == b'\x00' and data[13] == b'\xa1':
+                        mud_url = data[16:]
+                        log_udp_packet(timestamp, eth, 'RADIUS/DHCP Option', 
+                                       msg_type)
+                        validate_mud_url(mud_url, 'Radius')
+                        return True
+
+
+
 
     return False
 
@@ -259,6 +315,18 @@ def find_mud_url(pcap):
         if udp.sport == 68 and udp.dport == 67:
             if check_dhcp_packet(timestamp, eth, udp):
                 found_url = found_url + 1
+            continue
+
+        #
+        # Look for RADIUS packets carrying MUD URLs
+        # ISE can use port 1645 or 1812 for RADIUS Authentication, and
+        # port 1646 or 1813 for RADIUS Accounting.
+        #
+        if udp.dport == 1645 or udp.dport == 1812 or \
+           udp.dport == 1646 or udp.dport == 1813:
+            if check_radius_packet(timestamp, eth, udp):
+                found_url = found_url + 1
+
 
     if found_url == 0:
         print('\nNo records in the pcap file seem to contain a MUD URL.')
