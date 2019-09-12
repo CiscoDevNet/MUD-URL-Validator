@@ -26,6 +26,7 @@ a DHCP Discover message, and a DHCP Request message.
 * validators
 * argparse
 * wget
+* termcolor
 * os
 
 #### Installation:
@@ -34,6 +35,7 @@ Install dependancies.
 
 	pip install validators
 	pip install wget
+	pip install termcolor
 
 NOTE 1: Depending on your system, you may need to run pip as root. In that 
 case prepend each command with "sudo".

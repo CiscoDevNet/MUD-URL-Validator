@@ -20,6 +20,7 @@ import wget
 import dpkt.radius
 from dpkt.radius import *
 import dpkt
+from termcolor import colored
 
 iana_oui = str.join('',('%c'% i for i in (0x00, 0x00, 0x5e)))
 tr41_oui = str.join('',('%c'% i for i in (0x00, 0x12, 0xbb)))
@@ -109,32 +110,34 @@ def validate_mud_url(url, source):
     """
     errs = 0
 
-    print('    MUD Option found in {0}: {1}'.format(source, url))
+    print('    MUD Option found in ' + source + ': ' + colored(url,'green'))
     #print(url.encode('ascii'))
 
-    if not url.startswith ('https://'):
-        print('        ERROR: MUD URL does not begin with https://')
+    if url[0] == '"':
+        print(colored('        ERROR: MUD URL starts with a a quote (")','red'))
+        print('               This is typically an error in the')
+        print('               DHCP client configuration.')
         errs = errs + 1
+    else:
+        if not url.startswith ('https://'):
+            print(colored('        ERROR: MUD URL does not begin with https://','red'))
 
-    if url.endswith ('.json'):
-        print('        ERROR: MUD URL should not end with .json.')
-        print('               The MUD manager will add .json to the URL when')
-        print('               it needs it.')
-        errs = errs + 1
+            errs = errs + 1
+        else:
+            if not validators.url(url):
+                print(colored('        ERROR: ' + url + ': ' +  'Not a well formed URL.','red'))
+                print('               Ensure the MUD URL matches the format of:')
+                print('                   https://something.com/string/string/string.json')
+                print('               where "something.com" should be a domain name')
+                print('               and each "string" contains only legal characters')
+                print('               for a URL')
+                errs = errs + 1
 
     if url.find ('.well_known') > 0:
         print('        WARNING: A MUD URI should not have a ".well_known"')
         print('                component. This was present only in early ')
         print('                drafts of the MUD specification.')
 
-    if not validators.url(url):
-        print('        ERROR: Not a well formed URL.')
-        print('               Ensure the MUD URL matches the format of:')
-        print('                   https://something.com/string/string/string.json')
-        print('               where "something.com" should be a domain name')
-        print('               and each "string" contains only legal characters')
-        print('               for a URL')
-        errs = errs + 1
 
     if (not errs):
         print('        OK!')
